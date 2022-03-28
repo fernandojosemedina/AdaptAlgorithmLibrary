@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31402.337
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AdaptAlgorithmLibrary", "AdaptAlgorithmLibrary\AdaptAlgorithmLibrary.csproj", "{1D5E8C46-AD56-4120-97D9-C12A49560E65}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1D5E8C46-AD56-4120-97D9-C12A49560E65}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D5E8C46-AD56-4120-97D9-C12A49560E65}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D5E8C46-AD56-4120-97D9-C12A49560E65}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D5E8C46-AD56-4120-97D9-C12A49560E65}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {2F2AEDD7-B0B0-4AE7-85F9-1D22E1E24921}
+	EndGlobalSection
+EndGlobal
