@@ -47,6 +47,10 @@ namespace UrDeliveries.Models.SpiderLegModels
 
         public double DistanceKm { get; set; }
         public double DriveTimeH { get; set; }
+
+        public double ServiceTimeH { get; set; }
+
+        public double TotalTimeH { get; set; }
         public bool RequiresDriveTimeUpdate { get; set; }
 
         public int NumCapacityConstraints => Capacity.Count;

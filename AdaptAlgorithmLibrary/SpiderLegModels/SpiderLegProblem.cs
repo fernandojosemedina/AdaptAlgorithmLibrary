@@ -24,7 +24,7 @@ namespace UrDeliveries.Models.SpiderLegModels
         public int AddedRouteIdx { get; set; }
         public int? BalanceParameterIndex { get; set; } = null;
         public int LastBalanceParameterIndex { get; set; }
-        public double? MaxTotalTimeH { get; set; }
+        public Dictionary<string, double> MaxTotalTimeH { get; set; }
         public double? MaxServiceTimeH { get; set; }
         public int? ServiceTimeHParameterIndex { get; set; }
         private int NumberOfRoutesBeforeBalance { get; set; }
@@ -68,7 +68,7 @@ namespace UrDeliveries.Models.SpiderLegModels
         /// 
         public ScilogInterfaces.ScilogInterfaces.IHierarchicalRouteConstruction sHierarchicalRouteConstruction { get; set; }
 
-        public async Task AdjustNumberOfRoutes(int numberOfRoutes)
+        public void AdjustNumberOfRoutes(int numberOfRoutes)
         {
             if (numberOfRoutes == 0)
             {
@@ -91,8 +91,8 @@ namespace UrDeliveries.Models.SpiderLegModels
                 {
                     targetRoute.AddSite(s);
                 });
-                await RemoveEmptyRoutes();
-                await AdjustAdjacencies();
+                RemoveEmptyRoutes();
+                AdjustAdjacencies();
             }
             while (Routes.Count < numberOfRoutes)
             {
@@ -119,17 +119,17 @@ namespace UrDeliveries.Models.SpiderLegModels
                     var sites = Routes.SelectMany(r => r.UnlockedSites).ToList();
                     AssignToNearestRoute(sites, Routes);
                 }
-                await RemoveEmptyRoutes();
-                await AdjustAdjacencies();
+                RemoveEmptyRoutes();
+                AdjustAdjacencies();
             }
             Routes.ForEach(r =>
             {
                 for (var i = 0; i < r.NumCapacityConstraints; i++)
                 {
-                    r.MaxCapacity[i] = 1e9;
+                    //r.MaxCapacity[i] = 1e9;
                 }
             });
-            await AdjustAdjacencies();
+            AdjustAdjacencies();
             AdjustTargetCapacities();
         }
 
@@ -140,12 +140,12 @@ namespace UrDeliveries.Models.SpiderLegModels
         /// <returns>
         /// The routes after transferring the sites using the spider leg algorithm.
         /// </returns>
-        public async Task<List<Route>> Solve()
+        public List<Route> Solve()
         {
             var sw = new Stopwatch();
             sw.Start();
 
-            await Initialize();
+            Initialize();
 
             CurrentCapacityIncrement = 0.0;
 
@@ -153,8 +153,17 @@ namespace UrDeliveries.Models.SpiderLegModels
             {
                 Logger.Information("========== Iteration #{@i} ==========", it);
 
+
                 // Prepare model state before iteration
-                await PrepareIteration(it);
+                // Get all current sites in the system into a hash
+                var sites = new HashSet<String>();
+                foreach (Route route in Routes)
+                {
+                    foreach (Site site in route.Sites)
+                        sites.Add(site.Id);
+                }
+
+                PrepareIteration(it);
 
                 // Process each pair of adjacent routes and count the number of transfers
                 var numTransfers = RouteAdjacencies.Sum(ProcessAdjacency);
@@ -168,15 +177,22 @@ namespace UrDeliveries.Models.SpiderLegModels
                 // Sites were transferred from one route to another 
                 if (numTransfers > 0)
                 {
+                    var noOverCapacityRoutes = !Routes.Any(r => r.IsOverCapacity && !r.IsOverCapacitySitesRoute);
                     // Check for repeating configurations and break if necessary
                     PerformIterationSignatureCheck();
                     if (ShouldBreakIterationsDueToRepeatedSignatures)
                     {
-                        break;
+                        if (!noOverCapacityRoutes)
+                        {
+                            continue;
+                        } else
+                        {
+                            break;
+                        }
+                            
                     }
 
                     // Packing, no overcapacity routes - continue iterating until stabilized
-                    var noOverCapacityRoutes = !Routes.Any(r => r.IsOverCapacity && !r.IsOverCapacitySitesRoute);
                     if (noOverCapacityRoutes && !IsBalanceEnabled)
                     {
                         continue;
@@ -211,6 +227,7 @@ namespace UrDeliveries.Models.SpiderLegModels
                 // If it is not possible to increase the route capacities,
                 // try to split the over-capacity route
                 Logger.Information("Break over capacity route R{@Route}", overCapacityRoute.Id);
+                RemoveEmptyRoutes();
                 Routes.ForEach(r => r.UpdateCentroid());
                 RouteAdjacencies.ForEach(adj => adj.UpdateDistances());
                 var newRoute = SplitRoute(overCapacityRoute);
@@ -225,43 +242,44 @@ namespace UrDeliveries.Models.SpiderLegModels
             // Adjust adjacencies if necessary, before returning
             if (IsAutoAdjustAdjacenciesEnabled)
             {
-                await AdjustAdjacencies(true);
+                AdjustAdjacencies(true);
             }
-            await RemoveEmptyRoutes(checkFeasibility: true);
+            RemoveEmptyRoutes(checkFeasibility: true);
 
             sw.Stop();
+
 
             Logger.Information("========================================");
             Logger.Information("Total stage time {time} ms", sw.ElapsedMilliseconds);
             Logger.Information("========================================");
             updateSArrOrder();
-            updateSTrucks();
-            updateRouteTimeAndDistance();
+            updateSTrucks(false);
+            updateRouteTimeAndDistance(null,true);
             return Routes;
         }
+
+        //var routeIds = routesToEvaluate.Select(r => r.Id).ToArray();
 
         /// <summary>
         /// Prepares the model state at the beginning of an iteration
         /// </summary>
         /// <param name="iterationNumber"></param>
-        public async Task PrepareIteration(int iterationNumber)
+        public void PrepareIteration(int iterationNumber)
         {
-            await RemoveEmptyRoutes();
+            RemoveEmptyRoutes();
 
-            await AutoAdjustAdjacencies();
+            AutoAdjustAdjacencies();
 
             Routes.ForEach(r => r.UpdateCentroid());
 
             RouteAdjacencies.OrderBy(a => a.Sequence).ToList().ForEach(a => a.UpdateDistances());
 
             // Update service time constraints every N iterations if max total time is specified
-            if (iterationNumber % 4 == 0 && MaxTotalTimeH != null)
+            if (MaxTotalTimeH != null)
             {
                 UpdateServiceTimeConstraints(Routes, filterRoutes: iterationNumber > 0, maxCapacityOnly: IsBalanceEnabled);
-                if (IsBalanceEnabled)
-                {
-                    AdjustTargetCapacities(CurrentCapacityIncrement);
-                }
+                AdjustTargetCapacities(CurrentCapacityIncrement);
+
             }
 
             ClearLimitingCapacitiesIndices();
@@ -298,7 +316,7 @@ namespace UrDeliveries.Models.SpiderLegModels
         /// <summary>
         /// Initialize the variables
         /// </summary>
-        private async Task Initialize()
+        private void Initialize()
         {
 
             // If the max capacity is not set, copy the capacity
@@ -348,7 +366,7 @@ namespace UrDeliveries.Models.SpiderLegModels
             {
                 if (IsAutoAdjustAdjacenciesEnabled)
                 {
-                    await AdjustAdjacencies();
+                    AdjustAdjacencies();
                 }
 
                 Routes.ForEach(r =>
@@ -376,22 +394,25 @@ namespace UrDeliveries.Models.SpiderLegModels
             IterationSignatures = new List<string>();
             AllowedSkipAdjacencyAdjustments = 3;
             SkipNextAdjacencyAdjustment = false;
+            UpdateServiceTimeConstraints(Routes, filterRoutes: false, maxCapacityOnly: IsBalanceEnabled);
             AdjustTargetCapacities();
 
             if (TargetNumberOfRoutes > 0)
             {
-                await AdjustNumberOfRoutes(TargetNumberOfRoutes);
+                AdjustNumberOfRoutes(TargetNumberOfRoutes);
             }
         }
 
-        private async Task RemoveEmptyRoutes(bool checkFeasibility = false)
+        private void RemoveEmptyRoutes(bool checkFeasibility = false)
         {
             Routes = Routes.Where(r => r.Sites.Count > 0).ToList();
+            RouteAdjacencies = RouteAdjacencies.Where(ra => ra.InnerRoute.Sites.Count > 0 && ra.OuterRoute.Sites.Count > 0).ToList();
+
             var availableRoutes = OriginalRoutes
                 .Where(or => !Routes.Select(r => r.Id).Contains(or.Id))
                 .ToList();
             var routesToUpdateServiceTimeConstraints = new List<Route>();
-            Routes.Where(r => r.Id.StartsWith("X")).ToList().ForEach((r =>
+            Routes.Where(r => r.Id.StartsWith("ADAPT-X")).ToList().ForEach((r =>
             {
                 if (availableRoutes.Count == 0) return;
                 var match = availableRoutes
@@ -893,7 +914,7 @@ namespace UrDeliveries.Models.SpiderLegModels
                 }
                 else
                 {
-                    await AdjustAdjacencies();
+                    AdjustAdjacencies();
                 }
             }
         }
@@ -902,13 +923,13 @@ namespace UrDeliveries.Models.SpiderLegModels
         /// Recomputes the adjacencies.
         /// </summary>
         /// <returns></returns>
-        public async Task AdjustAdjacencies(bool includeSingleOverCapacity = false)
+        public void AdjustAdjacencies(bool includeSingleOverCapacity = false)
         {
             if (Base != null)
             {
                 Stopwatch sw = new Stopwatch();
                 sw.Start();
-                var distancesToBase = await EstimateRouteDistancesToBase();
+                var distancesToBase = EstimateRouteDistancesToBase();
                 distancesToBase.Add(0); // base to base
                 Logger.Information("Retrieved hull distances to base in {time} ms", sw.ElapsedMilliseconds);
                 // Note: we are intentionally providing the distance to the base in meters instead of 
@@ -1029,32 +1050,50 @@ namespace UrDeliveries.Models.SpiderLegModels
 
             var stopWatch = Stopwatch.StartNew();
             var idx = ServiceTimeHParameterIndex ?? 0;
+            var routesToEvaluate = !filterRoutes
+                ? routes
+                : routes
+                    .Where(r => r.Sites.Count > 0)
+                    .Where(r => (r.Load[idx] / r.MaxCapacity[idx] > 0.8) || r.RequiresDriveTimeUpdate)
+                    .ToList();
             ///The evaluator is no longer needed, since routesequencer is getting the actual times distances in every iteration.
-            updateSArrOrder();
-            updateSTrucks();
-            updateRouteTimeAndDistance();
-            routes.ForEach(route =>
+            ///
+            var routeIds = routesToEvaluate.Select(r => r.Id).ToArray();
+            if (routeIds.Count() > 0)
             {
-                var newCapacity = Math.Min(
-                    MaxServiceTimeH ?? 1e3,
-                    Math.Max(MaxTotalTimeH.GetValueOrDefault() - route.DriveTimeH - 0.1, 1)
-                );
-                route.MaxCapacity[idx] = newCapacity;
-                if (!maxCapacityOnly)
-                {
-                    route.Capacity[idx] = newCapacity;
-                }
+                Logger.Information($"Before updates Arr: {stopWatch.ElapsedMilliseconds} ms");
+                updateSArrOrder();
+                Logger.Information($"Before updates Srr: {stopWatch.ElapsedMilliseconds} ms");
+                updateSTrucks(false);
+                Logger.Information($"Before EValuate: {stopWatch.ElapsedMilliseconds} ms");
+                updateRouteTimeAndDistance(routeIds, false);
+                Logger.Information($"After EValuate: {stopWatch.ElapsedMilliseconds} ms");
 
-                route.RequiresDriveTimeUpdate = false;
-            });
-            Logger.Information($"Evaluation time: {stopWatch.ElapsedMilliseconds} ms");
+                routes.ForEach(route =>
+                {
+                    var newCapacity = Math.Min(
+                        MaxServiceTimeH ?? 1e3,
+                        Math.Max(MaxTotalTimeH[route.Id] - route.DriveTimeH - 0.1, 1)
+                    );
+                    route.MaxCapacity[idx] = newCapacity;
+                    if (!maxCapacityOnly)
+                    {
+                        route.Capacity[idx] = newCapacity;
+                    }
+
+                    route.RequiresDriveTimeUpdate = false;
+                });
+                Logger.Information($"Evaluation time: {stopWatch.ElapsedMilliseconds} ms");
+            }
+
+
         }
         
         /// <summary>
         /// Returns a distance (in meters) estimate from each route to the base
         /// </summary>
         /// <returns></returns>
-        private async Task<List<double>> EstimateRouteDistancesToBase()
+        private List<double> EstimateRouteDistancesToBase()
         {
             var routeIdx = 0;
             var routeIndices = new List<int>();
@@ -1197,7 +1236,7 @@ namespace UrDeliveries.Models.SpiderLegModels
         private string GetNewRouteId()
         {
             AddedRouteIdx++;
-            return "X" + AddedRouteIdx;
+            return "ADAPT-X" + AddedRouteIdx;
         }
 
         private void ComputeSitesXY(List<Site> sites)
@@ -1230,14 +1269,22 @@ namespace UrDeliveries.Models.SpiderLegModels
                 });
         }
 
-        public void updateSTrucks()
+        public void updateSTrucks(bool lastUpdate)
         {
-            this.sHierarchicalRouteConstruction.UpdateScilogRoutes();
+            this.sHierarchicalRouteConstruction.UpdateScilogRoutes(lastUpdate);
         }
 
-        public void updateRouteTimeAndDistance()
+        public void updateRouteTimeAndDistance(string[] routeIds, bool allRoutes)
         {
-            ScilogInterfaces.ScilogInterfaces.ITruck[] truckArray =  (ScilogInterfaces.ScilogInterfaces.ITruck[]) this.sHierarchicalRouteConstruction.RunSequencerForAdaptAlgorithm();
+            ScilogInterfaces.ScilogInterfaces.ITruck[] truckArray = (ScilogInterfaces.ScilogInterfaces.ITruck[])this.sHierarchicalRouteConstruction.GetAllTrucks();
+            //if (allRoutes)
+            //{
+            //    truckArray = (ScilogInterfaces.ScilogInterfaces.ITruck[])this.sHierarchicalRouteConstruction.RunIntraRouteImprovementAllRoutes();               
+            //}
+            //else
+            //{
+            //    truckArray = (ScilogInterfaces.ScilogInterfaces.ITruck[])this.sHierarchicalRouteConstruction.RunRouteSequencerOnSelectedRoutes(routeIds);
+            //}
             /// Update the time and distance for current A routes from the information acquired by the sequencer.
             this.Routes.ForEach(r => {
                 for (int i = 1; i < truckArray.Count(); i++)
@@ -1250,14 +1297,18 @@ namespace UrDeliveries.Models.SpiderLegModels
 
                     if (truck.szTruckID == r.Id)
                     {
-                        r.DriveTimeH = truck.dTotalDrivingHours;
+                        r.DriveTimeH = truck.dTotalHours - truck.dTotalSiteVisitTimeInHours - truck.dTotalUnloadTimeInHours;
+                        //r.DriveTimeH = truck.dTotalDrivingHours;
                         r.DistanceKm = truck.dTotalMiles;
+                        r.ServiceTimeH = truck.dTotalSiteVisitTimeInHours + truck.dTotalUnloadTimeInHours;
+                        r.TotalTimeH = truck.dTotalHours;
                     }
 
                 }
-                
+
             });
-            
+
+
         }
     }
 
