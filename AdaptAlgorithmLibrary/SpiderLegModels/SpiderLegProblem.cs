@@ -187,9 +187,9 @@ namespace UrDeliveries.Models.SpiderLegModels
                             continue;
                         } else
                         {
-                            break;
-                        }
-                            
+                        break;
+                    }
+
                     }
 
                     // Packing, no overcapacity routes - continue iterating until stabilized
@@ -278,9 +278,9 @@ namespace UrDeliveries.Models.SpiderLegModels
             if (MaxTotalTimeH != null)
             {
                 UpdateServiceTimeConstraints(Routes, filterRoutes: iterationNumber > 0, maxCapacityOnly: IsBalanceEnabled);
-                AdjustTargetCapacities(CurrentCapacityIncrement);
+                    AdjustTargetCapacities(CurrentCapacityIncrement);
 
-            }
+                }
 
             ClearLimitingCapacitiesIndices();
         }
@@ -1062,30 +1062,30 @@ namespace UrDeliveries.Models.SpiderLegModels
             if (routeIds.Count() > 0)
             {
                 Logger.Information($"Before updates Arr: {stopWatch.ElapsedMilliseconds} ms");
-                updateSArrOrder();
+            updateSArrOrder();
                 Logger.Information($"Before updates Srr: {stopWatch.ElapsedMilliseconds} ms");
                 updateSTrucks(false);
                 Logger.Information($"Before EValuate: {stopWatch.ElapsedMilliseconds} ms");
                 updateRouteTimeAndDistance(routeIds, false);
                 Logger.Information($"After EValuate: {stopWatch.ElapsedMilliseconds} ms");
 
-                routes.ForEach(route =>
-                {
-                    var newCapacity = Math.Min(
-                        MaxServiceTimeH ?? 1e3,
+            routes.ForEach(route =>
+            {
+                var newCapacity = Math.Min(
+                    MaxServiceTimeH ?? 1e3,
                         Math.Max(MaxTotalTimeH[route.Id] - route.DriveTimeH - 0.1, 1)
-                    );
-                    route.MaxCapacity[idx] = newCapacity;
-                    if (!maxCapacityOnly)
-                    {
-                        route.Capacity[idx] = newCapacity;
-                    }
+                );
+                route.MaxCapacity[idx] = newCapacity;
+                if (!maxCapacityOnly)
+                {
+                    route.Capacity[idx] = newCapacity;
+                }
 
-                    route.RequiresDriveTimeUpdate = false;
-                });
-                Logger.Information($"Evaluation time: {stopWatch.ElapsedMilliseconds} ms");
-            }
-
+                route.RequiresDriveTimeUpdate = false;
+            });
+            Logger.Information($"Evaluation time: {stopWatch.ElapsedMilliseconds} ms");
+        }
+        
 
         }
         
@@ -1305,9 +1305,9 @@ namespace UrDeliveries.Models.SpiderLegModels
                     }
 
                 }
-
+                
             });
-
+            
 
         }
     }
